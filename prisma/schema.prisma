@@ -4,16 +4,61 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["auth"]
 }
 
 model User {
-  id    Int     @id @default(autoincrement())
-  email String  @unique
-  name  String
+  id          String    @id @default(uuid(7))
+  email       String    @unique
+  displayName String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  sessions    Session[]
+  password    String?
+
+  @@schema("auth")
+}
+
+model Device {
+  id            String    @id @default(uuid(7))
+  identifier    String    @unique
+  isBlacklisted Boolean   @default(false)
+  sessions      Session[]
+
+  @@schema("auth")
+}
+
+model Session {
+  id            String         @id @default(uuid(7))
+  createdAt     DateTime       @default(now())
+  isActive      Boolean        @default(false)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id])
+  deviceId      String
+  device        Device         @relation(fields: [deviceId], references: [id])
+  refreshTokens RefreshToken[]
+
+  @@schema("auth")
+}
+
+model RefreshToken {
+  refreshToken String  @id
+  createdAt DateTime @default(now())
+  sessionId   String
+  session     Session @relation(fields: [sessionId], references: [id])
+  isRevoked Boolean @default(false)
+  rotateAfter DateTime
+  expiresAt DateTime
+  previousRefreshTokenId String? @unique
+  previousRefreshToken RefreshToken? @relation( "RefreshTokenPrevious", fields: [previousRefreshTokenId], references: [refreshToken], onUpdate: Cascade, onDelete: SetNull)
+  nextRefreshToken RefreshToken? @relation("RefreshTokenPrevious")
+  
+  @@schema("auth")
 }
