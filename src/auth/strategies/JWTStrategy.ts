@@ -43,14 +43,14 @@ export class JwtRefreshStrategy extends PassportStrategy(
     });
   }
 
-  async validate(req: Request, payload: { sub: string }) {
+  async validate(req: Request, payload: { id: string }) {
     // const refreshToken = req.headers.authorization?.split('Bearer ')[1];
     // add checks for blacklisting
     // const refreshToken = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
     const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
+      where: { id: payload.id },
     });
     if (!user) throw new UnauthorizedException();
-    return { id: payload.sub };
+    return { id: payload.id };
   }
 }

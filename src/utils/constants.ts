@@ -9,3 +9,5 @@ export const ENVS = {
   JWR_EXPIRES_IN: (process.env['JWR_EXPIRES_IN'] ?? '15m') as '15m',
   FRONTEND_URL: process.env['FRONTEND_URL'] ?? 'http://localhost:3000',
 };
+
+export const BANK_ID = '00000000-0000-0000-0000-000000000000';

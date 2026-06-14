@@ -11,17 +11,26 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth"]
+  schemas  = ["auth", "wallet"]
+}
+
+enum UserStatus {
+  active
+  archived
+
+  @@schema("auth")
 }
 
 model User {
-  id          String    @id @default(uuid(7))
-  email       String    @unique
+  id          String     @id @default(uuid(7))
+  email       String     @unique
   displayName String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   sessions    Session[]
   password    String?
+  wallets     Wallet[]
+  status      UserStatus @default(active)
 
   @@schema("auth")
 }
@@ -49,16 +58,87 @@ model Session {
 }
 
 model RefreshToken {
-  refreshToken String  @id
-  createdAt DateTime @default(now())
-  sessionId   String
-  session     Session @relation(fields: [sessionId], references: [id])
-  isRevoked Boolean @default(false)
-  rotateAfter DateTime
-  expiresAt DateTime
-  previousRefreshTokenId String? @unique
-  previousRefreshToken RefreshToken? @relation( "RefreshTokenPrevious", fields: [previousRefreshTokenId], references: [refreshToken], onUpdate: Cascade, onDelete: SetNull)
-  nextRefreshToken RefreshToken? @relation("RefreshTokenPrevious")
-  
+  refreshToken           String        @id
+  createdAt              DateTime      @default(now())
+  sessionId              String
+  session                Session       @relation(fields: [sessionId], references: [id])
+  isRevoked              Boolean       @default(false)
+  rotateAfter            DateTime
+  expiresAt              DateTime
+  previousRefreshTokenId String?       @unique
+  previousRefreshToken   RefreshToken? @relation("RefreshTokenPrevious", fields: [previousRefreshTokenId], references: [refreshToken], onUpdate: Cascade, onDelete: SetNull)
+  nextRefreshToken       RefreshToken? @relation("RefreshTokenPrevious")
+
   @@schema("auth")
+}
+
+model Wallet {
+  id        String    @id @default(uuid(7))
+  userId    String?
+  user      User?     @relation(fields: [userId], references: [id])
+  createdAt DateTime  @default(now())
+  journals  Journal[]
+
+  @@schema("wallet")
+}
+
+model Transaction {
+  id           String    @id @default(uuid(7))
+  description  String
+  createdAt    DateTime  @default(now())
+  journalEntry Journal[]
+
+  @@schema("wallet")
+}
+
+model Journal {
+  id            String      @id @default(uuid(7))
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  walletId      String
+  wallet        Wallet      @relation(fields: [walletId], references: [id])
+  amount        Int
+
+  @@schema("wallet")
+}
+
+enum KeyStatus {
+  processing
+  completed
+  failed
+
+  @@schema("wallet")
+}
+
+model IdempotencyKeys {
+  key         String    @id
+  payloadHash String
+  status      KeyStatus @default(processing)
+  createdAt   DateTime  @default(now())
+
+  @@schema("wallet")
+}
+
+enum EventType {
+  transferCompleted
+  fundsAdded
+
+  @@schema("wallet")
+}
+
+enum EventStatus {
+  pending
+  published
+
+  @@schema("wallet")
+}
+
+model events {
+  id        String      @id @default(uuid(7))
+  type      EventType
+  payload   Json
+  createdAt DateTime    @default(now())
+  status    EventStatus @default(pending)
+
+  @@schema("wallet")
 }
