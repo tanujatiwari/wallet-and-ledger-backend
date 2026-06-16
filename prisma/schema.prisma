@@ -54,6 +54,8 @@ model Session {
   device        Device         @relation(fields: [deviceId], references: [id])
   refreshTokens RefreshToken[]
 
+  @@index([userId])
+  @@index([deviceId])
   @@schema("auth")
 }
 
@@ -69,6 +71,7 @@ model RefreshToken {
   previousRefreshToken   RefreshToken? @relation("RefreshTokenPrevious", fields: [previousRefreshTokenId], references: [refreshToken], onUpdate: Cascade, onDelete: SetNull)
   nextRefreshToken       RefreshToken? @relation("RefreshTokenPrevious")
 
+  @@index([sessionId])
   @@schema("auth")
 }
 
@@ -80,6 +83,7 @@ model Wallet {
   journals  Journal[]
   balance   Int       @default(0)
 
+  @@index([userId])
   @@schema("wallet")
 }
 
@@ -100,6 +104,7 @@ model Journal {
   wallet        Wallet      @relation(fields: [walletId], references: [id])
   amount        Int
 
+  @@index([walletId, transactionId])
   @@schema("wallet")
 }
 
@@ -123,6 +128,7 @@ model ScheduledTransfer {
   status       ScheduledStatus @default(upcoming)
   retryCount   Int             @default(0)
 
+  @@index([status, scheduledAt, retryCount])
   @@schema("wallet")
 }
 
