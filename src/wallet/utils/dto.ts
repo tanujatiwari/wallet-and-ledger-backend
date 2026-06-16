@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsUUID } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsUUID } from 'class-validator';
 import type { UUID } from 'crypto';
 
 export class CreateWallet {
@@ -21,4 +21,9 @@ export class TransferMoney {
 
   @IsInt()
   amount: number;
+}
+
+export class SchedulePayment extends TransferMoney {
+  @IsDateString()
+  date: string;
 }

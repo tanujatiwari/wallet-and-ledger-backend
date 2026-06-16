@@ -78,6 +78,7 @@ model Wallet {
   user      User?     @relation(fields: [userId], references: [id])
   createdAt DateTime  @default(now())
   journals  Journal[]
+  balance   Int       @default(0)
 
   @@schema("wallet")
 }
@@ -98,6 +99,29 @@ model Journal {
   walletId      String
   wallet        Wallet      @relation(fields: [walletId], references: [id])
   amount        Int
+
+  @@schema("wallet")
+}
+
+enum ScheduledStatus {
+  completed
+  upcoming
+  cancelled
+  processing
+  failed
+
+  @@schema("wallet")
+}
+
+model ScheduledTransfer {
+  id           String          @id @default(uuid(7))
+  fromWalletId String
+  toWalletId   String
+  amount       Int
+  scheduledAt  DateTime
+  createdAt    DateTime        @default(now())
+  status       ScheduledStatus @default(upcoming)
+  retryCount   Int             @default(0)
 
   @@schema("wallet")
 }

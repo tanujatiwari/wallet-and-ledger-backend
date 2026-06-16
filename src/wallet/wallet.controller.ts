@@ -1,10 +1,19 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import type { UUID } from 'crypto';
 import { JwtAuthGuard } from 'src/auth/utils/Guards';
 import { BANK_ID } from 'src/utils/constants';
 import { User } from 'src/utils/decorators';
 import {
   CreateWallet,
+  SchedulePayment,
   TransferMoney,
   UpdateWallet,
 } from 'src/wallet/utils/dto';
@@ -33,9 +42,9 @@ export class WalletController {
     return updatedBalance;
   }
 
-  @Get(':walletId/balance')
-  async getWalletBalance(@Param('walletId') walletId: UUID) {
-    return await this.walletService.getWalletBalance(walletId);
+  @Get(':walletId')
+  async getWalletDetails(@Param('walletId') walletId: UUID) {
+    return await this.walletService.getWalletDetails(walletId);
   }
 
   @Post('transfer')
@@ -47,6 +56,18 @@ export class WalletController {
   @Get(':walletId/history')
   async getWalletTransactions(@Param('walletId') walletId: UUID) {
     const data = await this.walletService.getWalletHistory(walletId);
+    return data;
+  }
+
+  @Post('schedule')
+  async schedulePayments(@Body() payload: SchedulePayment) {
+    const data = await this.walletService.schedulePayment(payload);
+    return data;
+  }
+
+  @Patch('schedule/:scheduleId/cancel')
+  async cancelScheduledPayment(@Param() scheduleId: UUID) {
+    const data = await this.walletService.cancelScheduledPayment(scheduleId);
     return data;
   }
 }
