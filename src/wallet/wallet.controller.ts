@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import type { UUID } from 'crypto';
@@ -27,8 +28,13 @@ export class WalletController {
   constructor(private readonly walletService: WalletService) {}
 
   @Post()
-  async createWallet(@User('id') userId: UUID, @Body() payload?: CreateWallet) {
+  async createWallet(@User('id') userId: UUID, @Body() payload: CreateWallet) {
     return await this.walletService.createWalletWithAmount(userId, payload);
+  }
+
+  @Get('wallet-id')
+  async getWalletIdFromIdentifier(@Query('identifier') identifier: string) {
+    return this.walletService.getWalletIdFromIdentifier(identifier);
   }
 
   @Post(':walletId/amount')

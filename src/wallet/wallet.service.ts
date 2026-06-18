@@ -29,38 +29,50 @@ type PrismaTransaction = Omit<
 export class WalletService {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @Inject(CACHE_MANAGER) private cache: Cache,
   ) {}
 
   async createWallet(
     prisma: PrismaTransaction,
     userId: UUID,
+    identifier: string,
     balance?: number,
   ) {
     const newWallet = await prisma.wallet.create({
       data: {
         userId,
         balance,
+        identifier: identifier,
       },
     });
     return newWallet.id;
   }
 
-  async createWalletWithAmount(userId: UUID, payload?: CreateWallet) {
+  async createWalletWithAmount(userId: UUID, payload: CreateWallet) {
     const userWallet = await this.prisma.wallet.findFirst({
       where: {
-        userId: {
-          equals: userId,
-        },
+        OR: [
+          {
+            userId: {
+              equals: userId,
+            },
+          },
+          {
+            identifier: {
+              equals: payload.uniqueIdentifier,
+            },
+          },
+        ],
       },
     });
     if (userWallet) {
-      throw new ConflictException('Wallet already exists');
+      throw new ConflictException('Duplicate wallet');
     }
 
     await this.prisma.wallet.upsert({
       create: {
         id: BANK_ID,
+        identifier: BANK_ID,
       },
       where: { id: BANK_ID },
       update: {},
@@ -68,7 +80,12 @@ export class WalletService {
 
     if (payload?.amount) {
       return await this.prisma.$transaction(async (tx) => {
-        const walletId = await this.createWallet(tx, userId, payload.amount);
+        const walletId = await this.createWallet(
+          tx,
+          userId,
+          payload.uniqueIdentifier,
+          payload.amount,
+        );
         await tx.transaction.create({
           data: {
             description: 'Money added from Bank',
@@ -91,8 +108,21 @@ export class WalletService {
         return walletId;
       });
     } else {
-      return await this.createWallet(this.prisma, userId);
+      return await this.createWallet(
+        this.prisma,
+        userId,
+        payload.uniqueIdentifier,
+      );
     }
+  }
+
+  async getWalletIdFromIdentifier(identifier: string) {
+    const wallet = await this.prisma.wallet.findUniqueOrThrow({
+      where: {
+        identifier,
+      },
+    });
+    return wallet.id;
   }
 
   async checkIdempotency(
@@ -104,6 +134,22 @@ export class WalletService {
     if (!idempotencyKey) {
       return fn();
     }
+    const payloadHash = hash(payload);
+    const cacheKey = `idempotency:${idempotencyKey}`;
+
+    const cached = await this.cache.get<{
+      result: object;
+      payloadHash: string;
+    }>(cacheKey);
+    if (cached) {
+      if (cached.payloadHash !== payloadHash) {
+        throw new UnprocessableEntityException(
+          'Idempotency key reused with different payload',
+        );
+      }
+      return cached.result;
+    }
+
     const existing = await tx.idempotencyKeys.findUnique({
       where: {
         key: idempotencyKey,
@@ -115,7 +161,15 @@ export class WalletService {
           'Duplicate idempotency key for same payload',
         );
       }
-      if (existing.status === 'completed') return existing.result;
+      if (existing.status === 'completed') {
+        await this.cache.set(
+          cacheKey,
+          { result: existing.result, payloadHash },
+          86_400_000, //24h
+        );
+
+        return existing.result;
+      }
       if (existing.status === 'processing')
         throw new ConflictException('Request still processing');
 
@@ -123,7 +177,6 @@ export class WalletService {
     }
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 1);
-    const payloadHash = hash(payload);
     await tx.idempotencyKeys.upsert({
       where: { key: idempotencyKey },
       create: {
@@ -139,10 +192,14 @@ export class WalletService {
     try {
       const result = await fn();
 
-      await tx.idempotencyKeys.update({
-        where: { key: idempotencyKey },
-        data: { status: 'completed', result },
-      });
+      await Promise.all([
+        tx.idempotencyKeys.update({
+          where: { key: idempotencyKey },
+          data: { status: 'completed', result },
+        }),
+        this.cache.set(cacheKey, { result, payloadHash }, 86_400_000),
+      ]);
+
       return result;
     } catch (err) {
       console.log(err);

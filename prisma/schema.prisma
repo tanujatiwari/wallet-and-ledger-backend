@@ -76,14 +76,16 @@ model RefreshToken {
 }
 
 model Wallet {
-  id        String    @id @default(uuid(7))
-  userId    String?
-  user      User?     @relation(fields: [userId], references: [id])
-  createdAt DateTime  @default(now())
-  journals  Journal[]
-  balance   Int       @default(0)
+  id         String    @id @default(uuid(7))
+  identifier String    @unique
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+  createdAt  DateTime  @default(now())
+  journals   Journal[]
+  balance    Int       @default(0)
 
   @@index([userId])
+  @@index([identifier])
   @@schema("wallet")
 }
 

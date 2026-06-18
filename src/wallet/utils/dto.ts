@@ -1,10 +1,19 @@
-import { IsDateString, IsInt, IsOptional, IsUUID } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import type { UUID } from 'crypto';
 
 export class CreateWallet {
   @IsOptional()
   @IsInt()
   amount?: number;
+
+  @IsString()
+  uniqueIdentifier: string;
 }
 
 export class UpdateWallet {
