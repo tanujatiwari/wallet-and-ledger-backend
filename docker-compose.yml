@@ -10,3 +10,12 @@ services:
             - POSTGRES_USER=${POSTGRES_USER}
             - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             - POSTGRES_DB=${POSTGRES_DB}
+    cache:
+        image: 'bitnami/redis:latest'
+        ports:
+            - '6379:6379'
+        volumes:
+            - ./cache:/data
+        environment:
+            - REDIS_HOST=${REDIS_HOST}
+            - REDIS_PASSWORD=${REDIS_PASSWORD}

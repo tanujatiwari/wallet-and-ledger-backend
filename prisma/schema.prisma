@@ -145,6 +145,8 @@ model IdempotencyKeys {
   payloadHash String
   status      KeyStatus @default(processing)
   createdAt   DateTime  @default(now())
+  result      Json
+  expiresAt   DateTime
 
   @@schema("wallet")
 }

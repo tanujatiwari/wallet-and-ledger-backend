@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  Headers,
   Param,
   Patch,
   Post,
@@ -48,8 +50,17 @@ export class WalletController {
   }
 
   @Post('transfer')
-  async transferMoney(@Body() payload: TransferMoney) {
-    const data = await this.walletService.transferMoney(payload);
+  async transferMoney(
+    @Headers('idempotency-key') idempotencyKey: string,
+    @Body() payload: TransferMoney,
+  ) {
+    if (!idempotencyKey) {
+      throw new BadRequestException('Idempotency-Key header is required');
+    }
+    const data = await this.walletService.transferMoney(
+      payload,
+      idempotencyKey,
+    );
     return data;
   }
 

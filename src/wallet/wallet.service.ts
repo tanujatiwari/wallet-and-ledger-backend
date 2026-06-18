@@ -1,10 +1,14 @@
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { DefaultArgs } from '@prisma/client/runtime/client';
+import type { Cache } from 'cache-manager';
 import { UUID } from 'crypto';
 import {
   Prisma,
@@ -13,7 +17,7 @@ import {
   Wallet,
 } from 'src/generated/prisma/client';
 import { PrismaService } from 'src/prisma.service';
-import { BANK_ID } from 'src/utils/constants';
+import { BANK_ID, hash } from 'src/utils/constants';
 import { CreateWallet, SchedulePayment, TransferMoney } from './utils/dto';
 
 type PrismaTransaction = Omit<
@@ -23,7 +27,10 @@ type PrismaTransaction = Omit<
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
   async createWallet(
     prisma: PrismaTransaction,
@@ -88,8 +95,68 @@ export class WalletService {
     }
   }
 
+  async checkIdempotency(
+    fn: () => Promise<string>,
+    tx: PrismaTransaction,
+    payload: TransferMoney,
+    idempotencyKey?: string,
+  ) {
+    if (!idempotencyKey) {
+      return fn();
+    }
+    const existing = await tx.idempotencyKeys.findUnique({
+      where: {
+        key: idempotencyKey,
+      },
+    });
+    if (existing) {
+      if (hash(payload) !== existing.payloadHash) {
+        throw new UnprocessableEntityException(
+          'Duplicate idempotency key for same payload',
+        );
+      }
+      if (existing.status === 'completed') return existing.result;
+      if (existing.status === 'processing')
+        throw new ConflictException('Request still processing');
+
+      return existing.result;
+    }
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 1);
+    const payloadHash = hash(payload);
+    await tx.idempotencyKeys.upsert({
+      where: { key: idempotencyKey },
+      create: {
+        key: idempotencyKey,
+        payloadHash,
+        status: 'processing',
+        expiresAt,
+        result: {},
+      },
+      update: { status: 'processing' },
+    });
+
+    try {
+      const result = await fn();
+
+      await tx.idempotencyKeys.update({
+        where: { key: idempotencyKey },
+        data: { status: 'completed', result },
+      });
+      return result;
+    } catch (err) {
+      console.log(err);
+      await tx.idempotencyKeys.update({
+        where: { key: idempotencyKey },
+        data: { status: 'failed' },
+      });
+      throw err;
+    }
+  }
+
   async transferMoney(
     payload: TransferMoney,
+    idempotencyKey?: string,
     customTransaction?: PrismaTransaction,
   ) {
     const execute = async (tx: PrismaTransaction) => {
@@ -141,8 +208,15 @@ export class WalletService {
     };
 
     return customTransaction
-      ? execute(customTransaction)
-      : this.prisma.$transaction(execute);
+      ? this.checkIdempotency(
+          () => execute(customTransaction),
+          customTransaction,
+          payload,
+          idempotencyKey,
+        )
+      : this.prisma.$transaction((tx) =>
+          this.checkIdempotency(() => execute(tx), tx, payload, idempotencyKey),
+        );
   }
 
   async getWalletDetails(walletId: UUID) {
@@ -204,10 +278,10 @@ export class WalletService {
 
     const scheduledTransfers = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<ScheduledTransfer[]>(Prisma.sql`
-        select * from wallet.ScheduledTransfer
-        where scheduledAt <= ${now}
+        select * from "wallet"."ScheduledTransfer"
+        where "scheduledAt" <= ${now}
         and status in ('failed', 'upcoming')
-        and retryCount < ${maxRetries}
+        and "retryCount" < ${maxRetries}
         limit 100
         for update skip locked;
       `);
@@ -234,6 +308,7 @@ export class WalletService {
               fromWalletId: transfer.fromWalletId as UUID,
               toWalletId: transfer.toWalletId as UUID,
             },
+            undefined,
             tx,
           );
 
